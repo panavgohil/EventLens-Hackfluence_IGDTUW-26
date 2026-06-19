@@ -342,8 +342,8 @@ Built with ❤️ during **Hackfluence IGDTUW 2026**
 ### Team Members
 
 - Panav Gohil
-- Team Member 2
-- Team Member 3
+- Atin Jain
+
 
 ---
 
