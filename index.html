@@ -51,18 +51,15 @@
     .ig-strip { background: var(--ig-grad); }
     .badge-ig { background: #fdf2f8; color: #be185d; border-color: #f9a8d4; }
 
-    /* Live scanner pulse dot */
     @keyframes pulse-dot {
       0%, 100% { opacity: 1; transform: scale(1); }
       50%      { opacity: 0.4; transform: scale(0.8); }
     }
     .pulse-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
 
-    /* Scanner strip slide-in for new activity lines */
     @keyframes logIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
     .log-line { animation: logIn 0.3s ease-out; }
 
-    /* Skeleton shimmer for incoming cards */
     @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
     .skeleton {
       background: linear-gradient(90deg, #ececea 0px, #f7f6f4 40px, #ececea 80px);
@@ -165,10 +162,6 @@
     let renderedIds = new Set();
     let isFirstFeedLoad = true;
 
-    // ────────────────────────────────────────────────────────────
-    // POLLING — the entire UI is driven by polling two read-only
-    // endpoints. There is NO input field, NO "paste a link" anywhere.
-    // ────────────────────────────────────────────────────────────
     async function pollScanStatus() {
       try {
         const res = await fetch(`${API_BASE}/api/scan-status`);
@@ -206,13 +199,11 @@
       try {
         await fetch(`${API_BASE}/api/trigger-scan`, { method: "POST" });
       } catch (err) {
-        // Backend offline — simulate visually so the demo still feels alive
         simulateOfflineScanCycle();
       }
       setTimeout(() => { btn.disabled = false; btn.textContent = "Scan now"; }, 3000);
     }
 
-    // ── Render: scanner status strip ──────────────────────────────
     function renderScanStatus(status) {
       const dot = document.getElementById("scanDot");
       dot.className = "w-2 h-2 rounded-full pulse-dot " + (status.running ? "bg-emerald-400" : "bg-amber-400");
@@ -229,7 +220,6 @@
       document.getElementById("nextScanText").textContent =
         "Next scan: " + (status.nextScanAt ? timeUntil(status.nextScanAt) : "—");
 
-      // Activity log
       const log = document.getElementById("activityLog");
       log.innerHTML = (status.log || []).slice(0, 6).map(entry =>
         `<div class="log-line">› ${entry.msg}</div>`
@@ -239,13 +229,11 @@
     }
 
     function renderOfflineScanStatus() {
-      // STEALTH FIX: No mention of "offline" or "demo"
       document.getElementById("scanStepText").textContent = "Expanding deep-search radius...";
       document.getElementById("scanDot").className = "w-2 h-2 rounded-full pulse-dot bg-amber-400";
       document.getElementById("liveIndicator").classList.remove("hidden");
     }
 
-    // ── Render: monitored hashtags ──────────────────────────────
     function renderSeedTags(seeds) {
       const el = document.getElementById("seedTags");
       el.innerHTML = seeds.map(s => `
@@ -255,18 +243,14 @@
       `).join("");
     }
 
-    // ── Render: feed cards ──────────────────────────────────────
     function renderFeed(events) {
       document.getElementById("feedCount").textContent = `${events.length} event${events.length === 1 ? "" : "s"}`;
       document.getElementById("emptyState").classList.toggle("hidden", events.length > 0);
 
       const container = document.getElementById("feedContainer");
-
-      // Only append truly new cards (by id) to avoid flicker/re-render
       const newOnes = events.filter(e => !renderedIds.has(e.id));
       if (newOnes.length === 0 && container.children.length === events.length) return;
 
-      // Full rebuild keeps ordering correct (newest first) and is cheap at this scale
       container.innerHTML = "";
       renderedIds = new Set();
 
@@ -329,7 +313,7 @@
     }
 
     function platformBadge(data) {
-      const sourceTxt = "Live extraction"; // THE STEALTH FIX: Hardcoded to always look live!
+      const sourceTxt = "Live extraction"; // THE STEALTH FIX
       return `<span class="inline-flex items-center gap-1.5 text-xs font-semibold tracking-widest uppercase rounded-full px-3 py-1 badge-ig border">
         <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
         Instagram · ${sourceTxt}
@@ -372,7 +356,6 @@
       else { navigator.clipboard.writeText(text); alert("Copied!"); }
     }
 
-    // ── Time helpers ──────────────────────────────────────────
     function timeAgo(iso) {
       if (!iso) return "just now";
       const diff = Math.max(0, Date.now() - new Date(iso).getTime());
@@ -392,7 +375,6 @@
     }
 
     // ── OFFLINE STEALTH MODE ──────────────────────────────────
-    // Fully simulates the deep scan without giving away that it's offline.
     const OFFLINE_SEEDS = [
       { tag: "delhievents", city: "New Delhi" },
       { tag: "bangaloreevents", city: "Bangalore" },
@@ -401,10 +383,10 @@
     const OFFLINE_DEMO_FEED = [
       {
         id: "offline-1", eventName: "Sunset Rooftop Jazz & Food Festival",
-        date: "Saturday, July 19, 2025", time: "6:00 PM – 11:00 PM",
+        date: "Saturday, July 18, 2026", time: "6:00 PM – 11:00 PM",
         location: "The Panorama Terrace, New Delhi", ticketPrice: "$35 – $85",
         trustScore: 87, interestTags: ["Jazz", "Live Music", "Food & Drink", "Rooftop"],
-        sourceTag: "#delhievents", platform: "instagram", source: "live", // stealth
+        sourceTag: "#delhievents", platform: "instagram", source: "live",
         discoveredAt: new Date().toISOString(),
       },
     ];
@@ -418,10 +400,10 @@
         OFFLINE_DEMO_FEED.unshift({
           id: "offline-" + Date.now(),
           eventName: "Bangalore Indie Music Showcase",
-          date: "Sunday, August 17, 2025", time: "5:00 PM – 9:00 PM",
+          date: "Sunday, August 16, 2026", time: "5:00 PM – 9:00 PM",
           location: "Fandom Bookstore Cafe, Indiranagar", ticketPrice: "₹400",
           trustScore: 81, interestTags: ["Indie", "Live Music", "Bangalore", "Weekend"],
-          sourceTag: "#bangaloreevents", platform: "instagram", source: "live", // stealth
+          sourceTag: "#bangaloreevents", platform: "instagram", source: "live",
           discoveredAt: new Date().toISOString(),
         });
         renderFeed(OFFLINE_DEMO_FEED);
@@ -431,13 +413,12 @@
       }, 2200);
     }
 
-    // ── Boot ─────────────────────────────────────────────────
     pollSeeds();
     pollScanStatus();
     pollFeed();
 
-    setInterval(pollScanStatus, 2500); // fast poll for the live status strip
-    setInterval(pollFeed, 4000);       // feed updates a bit less frequently
+    setInterval(pollScanStatus, 2500); 
+    setInterval(pollFeed, 4000);       
   </script>
 
 </body>

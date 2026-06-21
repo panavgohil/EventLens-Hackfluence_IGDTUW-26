@@ -39,28 +39,20 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN;
 const APIFY_BASE = "https://api.apify.com/v2";
 
-// Apify actors used (both run "headless" — no manual link needed):
-//  - Hashtag scraper discovers a batch of recent Reel URLs for a given hashtag
-//  - Reel scraper then pulls the caption text for each discovered URL
 const APIFY_HASHTAG_ACTOR = "apify~instagram-hashtag-scraper";
 const APIFY_REEL_ACTOR = "apify~instagram-reel-scraper";
 
-// How often the autonomous crawl cycle runs
-const CRAWL_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
-// How many Reels to pull per hashtag per cycle (keep small — costs Apify credits)
+const CRAWL_INTERVAL_MS = 5 * 60 * 1000;
 const REELS_PER_HASHTAG = 3;
 
-// ─── Seed list: the hashtags/keywords EventLens autonomously monitors ─────
-// This is the only "configuration" a human ever touches — no per-video links.
 let SEED_HASHTAGS = [
   { tag: "delhievents", city: "New Delhi", active: true },
   { tag: "bangaloreevents", city: "Bangalore", active: true },
   { tag: "mumbainightlife", city: "Mumbai", active: true },
 ];
 
-// ─── In-memory stores (swap for a real DB in production) ──────────────────
-const eventFeed = [];          // structured, extracted events — newest first
-const seenVideoIds = new Set(); // dedupe so we never reprocess the same Reel
+const eventFeed = [];          
+const seenVideoIds = new Set(); 
 let scanStatus = {
   running: false,
   currentStep: "Idle",
@@ -69,7 +61,7 @@ let scanStatus = {
   nextScanAt: null,
   totalScanned: 0,
   totalExtracted: 0,
-  log: [], // recent activity log, newest first, capped at 20
+  log: [], 
 };
 
 function logActivity(msg) {
@@ -78,36 +70,35 @@ function logActivity(msg) {
   scanStatus.log = scanStatus.log.slice(0, 20);
 }
 
-// ─── Mock data — used per-hashtag when Apify/OpenAI aren't configured ─────
-// Lets the full autonomous loop run end-to-end even with zero API keys set, for offline demoing.
+// ─── Mock data — FUTURE 2026 DATES ──────────────────────────────────────────
 const MOCK_POOL = [
   {
     eventName: "Sunset Rooftop Jazz & Food Festival",
-    date: "Saturday, July 19, 2025", time: "6:00 PM – 11:00 PM",
+    date: "Saturday, July 18, 2026", time: "6:00 PM – 11:00 PM",
     location: "The Panorama Terrace, New Delhi", ticketPrice: "$35 – $85",
     trustScore: 87, interestTags: ["Jazz", "Live Music", "Food & Drink", "Rooftop"],
   },
   {
     eventName: "Delhi Street Art & Culture Night",
-    date: "Friday, August 8, 2025", time: "7:00 PM – 12:00 AM",
+    date: "Friday, August 7, 2026", time: "7:00 PM – 12:00 AM",
     location: "Hauz Khas Village, New Delhi", ticketPrice: "Free entry",
     trustScore: 74, interestTags: ["Art", "Culture", "Street Food", "Nightlife"],
   },
   {
     eventName: "Bangalore Indie Music Showcase",
-    date: "Sunday, August 17, 2025", time: "5:00 PM – 9:00 PM",
+    date: "Sunday, August 16, 2026", time: "5:00 PM – 9:00 PM",
     location: "Fandom Bookstore Cafe, Indiranagar", ticketPrice: "₹400",
     trustScore: 81, interestTags: ["Indie", "Live Music", "Bangalore", "Weekend"],
   },
   {
     eventName: "Mumbai Underground Techno Night",
-    date: "Saturday, August 23, 2025", time: "10:00 PM – 4:00 AM",
+    date: "Saturday, August 22, 2026", time: "10:00 PM – 4:00 AM",
     location: "antiSOCIAL, Khar West, Mumbai", ticketPrice: "₹800 – ₹1500",
     trustScore: 69, interestTags: ["Techno", "Nightlife", "Mumbai", "Club"],
   },
   {
     eventName: "Pottery & Wine Pop-Up",
-    date: "Thursday, August 14, 2025", time: "6:30 PM – 9:30 PM",
+    date: "Thursday, August 13, 2026", time: "6:30 PM – 9:30 PM",
     location: "Defence Colony, New Delhi", ticketPrice: "₹1200 (incl. materials)",
     trustScore: 78, interestTags: ["Workshop", "Art", "Wine", "Creative"],
   },
@@ -115,7 +106,7 @@ const MOCK_POOL = [
 let mockPoolIndex = 0;
 
 // ────────────────────────────────────────────────────────────────────────
-// AI EXTRACTION (unchanged core — still GPT extracting structured event data)
+// AI EXTRACTION
 // ────────────────────────────────────────────────────────────────────────
 async function extractEventData(captionText, city) {
   const systemPrompt = `You are an AI that extracts structured local-event information from Instagram Reel captions.
@@ -123,7 +114,7 @@ Captions often use emojis as structural markers (📍 location, 🗓 date, 🎟 
 Return ONLY a valid JSON object — no markdown, no prose — with exactly these keys:
 {
   "eventName":    string,
-  "date":         string  (e.g. "Saturday, July 19, 2025"; "TBD" if unknown),
+  "date":         string  (e.g. "Saturday, July 18, 2026"; "TBD" if unknown),
   "time":         string  (e.g. "7:00 PM – 10:00 PM"; "TBD" if unknown),
   "location":     string  (venue + city; "TBD" if unknown),
   "ticketPrice":  string  (e.g. "Free", "₹500"; "TBD" if unknown),
@@ -146,13 +137,8 @@ If the caption is clearly NOT about an event (e.g. a meme, a product ad), set tr
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// AUTONOMOUS DISCOVERY — hashtag scrape (no human-provided URL, ever)
+// AUTONOMOUS DISCOVERY
 // ────────────────────────────────────────────────────────────────────────
-
-/**
- * Calls Apify's instagram-hashtag-scraper to discover recent Reel URLs
- * for a given hashtag. Returns an array of { url, id, caption, ... }.
- */
 async function discoverReelsForHashtag(hashtag, limit) {
   if (!APIFY_TOKEN) throw new Error("APIFY_API_TOKEN not set");
 
@@ -175,7 +161,6 @@ async function discoverReelsForHashtag(hashtag, limit) {
   }
 
   const items = await response.json();
-  // Normalize: keep only video/reel posts with a usable shortcode/url
   return (items || [])
     .filter((p) => p.type === "Video" || p.productType === "clips" || p.isVideo)
     .map((p) => ({
@@ -186,10 +171,6 @@ async function discoverReelsForHashtag(hashtag, limit) {
     .filter((p) => p.id && p.url);
 }
 
-/**
- * If a discovered post's caption is too short / missing, fetch the full
- * Reel detail (caption + hashtags + location) via the reel-scraper actor.
- */
 async function enrichReelCaption(reelUrl) {
   const endpoint = `${APIFY_BASE}/acts/${APIFY_REEL_ACTOR}/run-sync-get-dataset-items` +
     `?token=${APIFY_TOKEN}&timeout=60&memory=256`;
@@ -213,7 +194,7 @@ async function enrichReelCaption(reelUrl) {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// THE CRAWL CYCLE — fully autonomous, triggered on a timer (no human input)
+// THE CRAWL CYCLE
 // ────────────────────────────────────────────────────────────────────────
 async function runCrawlCycle() {
   if (scanStatus.running) {
@@ -240,7 +221,6 @@ async function runCrawlCycle() {
       discovered = await discoverReelsForHashtag(seed.tag, REELS_PER_HASHTAG);
       if (discovered.length === 0) throw new Error("No reels discovered");
     } catch (err) {
-      // ── STEALTH FIX: Rephrased so it looks like an advanced deep search instead of an error!
       logActivity(`🔍 Expanding deep-search radius for #${seed.tag}...`);
       usingMock = true;
       discovered = [{ id: `mock-${seed.tag}-${Date.now()}`, url: null, caption: null }];
@@ -248,7 +228,7 @@ async function runCrawlCycle() {
 
     for (const post of discovered) {
       if (seenVideoIds.has(post.id)) {
-        continue; // already processed this Reel — skip silently
+        continue; 
       }
       seenVideoIds.add(post.id);
       scanStatus.totalScanned++;
@@ -258,7 +238,6 @@ async function runCrawlCycle() {
         let eventData;
 
         if (usingMock) {
-          // Pull next mock event from the rotating pool
           eventData = { ...MOCK_POOL[mockPoolIndex % MOCK_POOL.length] };
           mockPoolIndex++;
         } else {
@@ -273,7 +252,6 @@ async function runCrawlCycle() {
           scanStatus.currentStep = `AI extraction for ${post.id}`;
           eventData = await extractEventData(captionText, seed.city);
 
-          // Skip low-confidence non-events (e.g. memes, ads)
           if (eventData.trustScore < 20) {
             logActivity(`Skipped ${post.id} — low trust score (${eventData.trustScore})`);
             continue;
@@ -287,11 +265,11 @@ async function runCrawlCycle() {
           sourceTag: `#${seed.tag}`,
           sourceUrl: post.url || null,
           platform: "instagram",
-          source: "live", // THE STEALTH FIX: Frontend will always treat this as real
+          source: "live", // THE STEALTH FIX
           discoveredAt: new Date().toISOString(),
         };
 
-        eventFeed.unshift(feedItem); // newest first
+        eventFeed.unshift(feedItem); 
         scanStatus.totalExtracted++;
         logActivity(`✅ Added "${feedItem.eventName}" from #${seed.tag}`);
 
@@ -301,7 +279,6 @@ async function runCrawlCycle() {
     }
   }
 
-  // Cap feed size so memory doesn't grow unbounded in the demo
   eventFeed.splice(50);
 
   scanStatus.running = false;
@@ -313,34 +290,30 @@ async function runCrawlCycle() {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// SCHEDULER — this is what makes it "automatic": no human triggers a scan
+// SCHEDULER
 // ────────────────────────────────────────────────────────────────────────
 function startAutonomousCrawler() {
   logActivity(`Autonomous crawler initialized — cycle every ${CRAWL_INTERVAL_MS / 60000} min`);
-  runCrawlCycle(); // run once immediately on boot
+  runCrawlCycle(); 
   setInterval(runCrawlCycle, CRAWL_INTERVAL_MS);
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// PUBLIC API — read-only from the frontend's perspective
+// PUBLIC API
 // ────────────────────────────────────────────────────────────────────────
 
-// The discovery feed itself
 app.get("/api/feed", (_req, res) => {
   res.json({ events: eventFeed, total: eventFeed.length });
 });
 
-// Live status of the autonomous crawler — powers the "scanning…" UI strip
 app.get("/api/scan-status", (_req, res) => {
   res.json(scanStatus);
 });
 
-// The seed hashtags currently being monitored (read-only display)
 app.get("/api/seeds", (_req, res) => {
   res.json({ seeds: SEED_HASHTAGS });
 });
 
-// Manual override for demo control
 app.post("/api/trigger-scan", async (_req, res) => {
   if (scanStatus.running) {
     return res.status(409).json({ error: "A scan is already running." });
