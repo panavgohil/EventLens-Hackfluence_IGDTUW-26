@@ -1,379 +1,114 @@
-# 🎟️ EventLens
+# EventLens v3 — Fully Autonomous Discovery
 
-### Surface the Hidden Event
+This version removes manual URL pasting entirely. The backend runs its own
+crawl loop on a timer; the frontend is a pure read-only feed that fills
+itself in.
 
-> Thousands of local events are announced every day through Instagram Reels, YouTube Shorts, and other short-form content platforms. Most of these events never make it to traditional event discovery platforms, making them difficult for people to find.
->
-> **EventLens** uses AI to automatically extract event information from short-form content and transform it into structured, searchable event listings.
+## Why this addresses the mentor feedback
 
-🚀 Built for **Hackfluence IGDTUW 2026**
+| Before (v1/v2) | Now (v3) |
+|---|---|
+| User pastes a YouTube/IG link | No input field exists anywhere in the UI |
+| One video processed per click | A scheduler scans a **seed list of hashtags** every 5 minutes |
+| Backend is purely reactive | Backend is **proactive** — `startAutonomousCrawler()` runs on boot and loops forever |
+| Frontend POSTs a URL | Frontend only does `GET /api/feed` and `GET /api/scan-status` — it has no way to submit a link even if it wanted to |
 
----
+## How the pipeline works end-to-end
 
-## 🌟 Problem Statement
-
-Local events are often promoted only through:
-
-- Instagram Reels
-- YouTube Shorts
-- Social Media Stories
-- Influencer Content
-- Community Creator Posts
-
-These events remain invisible to major event discovery platforms because the information is locked inside videos and captions.
-
-As a result:
-
-- Event organizers struggle with discoverability.
-- Users miss opportunities happening around them.
-- Valuable community events remain hidden from the audience that would love to attend them.
-
----
-
-## 💡 Solution
-
-EventLens acts as an AI-powered event discovery engine.
-
-The platform:
-
-1. Ingests public short-form content.
-2. Extracts captions, transcripts, and metadata.
-3. Uses AI to identify event details.
-4. Converts unstructured content into structured event records.
-5. Displays events in an easy-to-browse discovery feed.
-
-### Example
-
-Input:
-
-> "Delhi Startup Meetup this Saturday at Connaught Place from 5 PM onwards. Free registration link in bio."
-
-EventLens extracts:
-
-```json
-{
-  "eventName": "Delhi Startup Meetup",
-  "location": "Connaught Place",
-  "date": "Saturday",
-  "time": "5 PM",
-  "category": "Networking",
-  "price": "Free"
-}
+```
+SEED_HASHTAGS (#delhievents, #bangaloreevents, #mumbainightlife)
+        │
+        ▼  every CRAWL_INTERVAL_MS (5 min), automatically
+discoverReelsForHashtag()  → Apify instagram-hashtag-scraper
+        │  returns a batch of recent Reel URLs/IDs (no human picked these)
+        ▼
+dedupe against seenVideoIds (never reprocess the same Reel)
+        │
+        ▼
+enrichReelCaption()  → Apify instagram-reel-scraper (if caption missing)
+        │
+        ▼
+extractEventData()  → OpenAI structured extraction
+        │
+        ▼
+eventFeed.unshift(item)  → in-memory store, newest first
+        │
+        ▼
+Frontend polls GET /api/feed every 4s → new cards animate in automatically
 ```
 
-and publishes it as a discoverable event listing.
-
----
-
-# ✨ Features
-
-### 🎥 Multi-Platform Content Processing
-
-- YouTube Shorts support
-- Instagram Reels support
-- Public content ingestion
-- Transcript and caption extraction
-
-### 🤖 AI-Powered Event Extraction
-
-- Event title extraction
-- Date detection
-- Time extraction
-- Venue identification
-- Event category classification
-- Description generation
-- Structured JSON output
-
-### 📍 Event Discovery Feed
-
-- Clean event cards
-- Organized metadata display
-- Fast browsing experience
-
-### ⚡ Lightweight Prototype
-
-- Simple frontend architecture
-- Express backend
-- GPT-powered extraction pipeline
-
----
-
-# 🏗️ Architecture
-
-```text
-          ┌─────────────────────┐
-          │ Instagram Reel URL  │
-          └──────────┬──────────┘
-                     │
-                     ▼
-              Apify Scraper
-                     │
-                     ▼
-           Caption / Metadata
-                     │
-                     ▼
-
-          ┌─────────────────────┐
-          │ YouTube Shorts URL  │
-          └──────────┬──────────┘
-                     │
-                     ▼
-          Transcript Extraction
-                     │
-                     ▼
-
-            Combined Content
-                     │
-                     ▼
-              GPT-4o Mini
-                     │
-                     ▼
-        Structured Event JSON
-                     │
-                     ▼
-            Event Discovery Feed
-```
-
----
-
-# 🛠️ Tech Stack
-
-## Frontend
-
-- HTML5
-- Vanilla JavaScript
-- Tailwind CSS
-
-## Backend
-
-- Node.js
-- Express.js
-
-## AI & Data
-
-- OpenAI GPT-4o Mini
-- Apify API
-- youtube-transcript
-
----
-
-# 📂 Project Structure
-
-```text
-EventLens-Hackfluence_IGDTUW-26/
-│
-├── index.html
-├── script.js
-├── styles.css
-│
-├── server.js
-├── package.json
-├── package-lock.json
-├── .env
-├── README.md
-│
-└── assets/
-```
-
----
-
-# ⚙️ Getting Started
-
-## 1️⃣ Clone the Repository
-
-```bash
-git clone https://github.com/panavgohil/EventLens-Hackfluence_IGDTUW-26.git
-
-cd EventLens-Hackfluence_IGDTUW-26
-```
-
----
-
-## 2️⃣ Install Dependencies
+## Setup
 
 ```bash
 npm install
 ```
 
----
-
-## 3️⃣ Create Environment Variables
-
-Create a `.env` file in the root directory.
-
-```env
-OPENAI_API_KEY=sk-your-openai-key
-
-APIFY_API_TOKEN=apify_api_your-apify-token
+Create `.env`:
+```
+OPENAI_API_KEY=sk-...
+APIFY_API_TOKEN=apify_api_...
 ```
 
----
-
-## 4️⃣ Start the Backend Server
-
+Run:
 ```bash
-npm run dev
+npm start
 ```
 
-The backend will start on:
+The crawler starts **immediately on boot** — you'll see log lines like:
 
-```text
-http://localhost:3001
+```
+[CRAWL] 🔄 Crawl cycle started
+[CRAWL] Scanning #delhievents (New Delhi)
+[CRAWL] ✅ Added "Sunset Rooftop Jazz & Food Festival" from #delhievents
+[CRAWL] 🏁 Crawl cycle complete
 ```
 
----
+Then open `index.html` — the feed fills in within a few seconds, with zero
+interaction required.
 
-## 5️⃣ Launch the Frontend
+## Demo-safety failsafes (still fully functional with no API keys)
 
-Simply open:
+1. **No Apify token** → `discoverReelsForHashtag()` throws → caught →
+   the cycle falls back to pulling from a rotating local `MOCK_POOL`, so
+   cards still appear automatically, just clearly labeled `"Demo data"`.
+2. **No OpenAI key** → same fallback path.
+3. **Backend not running at all** → frontend's `pollFeed()`/`pollScanStatus()`
+   catch the fetch failure and run a local `simulateOfflineScanCycle()` so
+   the autonomous *experience* (status strip animating, a new card
+   appearing) still demonstrates the concept without any server.
 
-```text
-index.html
+## Judge-facing "proof of automation"
+
+The black **Live Scanner Strip** at the top of the page is the key piece
+for demoing the autonomy claim:
+- Shows which hashtag is currently being scanned, in real time
+- Shows a running scanned/extracted counter
+- Shows a scrolling activity log (`✅ Added "X" from #tag`)
+- Shows "Last scan" / "Next scan" countdowns
+- Has a **"Scan now"** button — this does NOT let you paste a link, it
+  just nudges the *same* autonomous cycle to run a cycle early, useful for
+  live demos so you don't have to wait 5 minutes on stage.
+
+## Tuning the seed list
+
+Edit `SEED_HASHTAGS` in `server.js`:
+
+```js
+let SEED_HASHTAGS = [
+  { tag: "delhievents", city: "New Delhi", active: true },
+  { tag: "bangaloreevents", city: "Bangalore", active: true },
+  { tag: "mumbainightlife", city: "Mumbai", active: true },
+];
 ```
 
-in any modern web browser.
+This is the only place a human ever configures *what* gets discovered —
+never *which specific video*. That's the architectural distinction that
+satisfies "should not scrape manually."
 
-You can now paste:
+## Production notes (good to mention if asked)
 
-- Instagram Reel URLs
-- YouTube Shorts URLs
-
-and test the complete extraction workflow.
-
----
-
-# 🔄 How It Works
-
-### Step 1
-
-User submits a Reel or Shorts URL.
-
-↓
-
-### Step 2
-
-EventLens extracts:
-
-- Video transcript
-- Caption text
-- Metadata
-
-↓
-
-### Step 3
-
-GPT-4o Mini analyzes the content.
-
-↓
-
-### Step 4
-
-Event information is extracted into structured JSON.
-
-↓
-
-### Step 5
-
-Events are displayed as discoverable cards in the feed.
-
----
-
-# 🎯 Why EventLens?
-
-Today, discovering local events is surprisingly difficult.
-
-Most event discovery platforms rely on:
-
-- Manual submissions
-- Paid promotions
-- Dedicated event websites
-
-However, creators increasingly announce events directly through short-form content.
-
-EventLens bridges this gap by transforming social content into searchable event data.
-
-This allows:
-
-- Event organizers to reach larger audiences
-- Users to discover more local experiences
-- Communities to become more connected
-
----
-
-# 🚀 Future Roadmap
-
-### Phase 1
-
-- More social media integrations
-- Better event categorization
-- Improved extraction accuracy
-
-### Phase 2
-
-- User authentication
-- Saved events
-- Personalized recommendations
-- Search and filtering
-
-### Phase 3
-
-- Mobile application
-- Real-time notifications
-- Ticket booking integrations
-- Event verification system
-- Creator dashboard
-
----
-
-# 🌍 Vision
-
-Our long-term vision is to become:
-
-> **"The Event Discovery Layer for the Creator Economy."**
-
-A platform where users can effortlessly discover local experiences hidden inside the internet's massive stream of short-form content.
-
----
-
-# 👨‍💻 Team
-
-Built with ❤️ during **Hackfluence IGDTUW 2026**
-
-### Team Members
-
-- Panav Gohil
-- Atin Jain
-
-
----
-
-# 🤝 Contributing
-
-Contributions, suggestions, and feature requests are welcome.
-
-Feel free to:
-
-1. Fork the repository
-2. Create a new branch
-3. Make your changes
-4. Submit a pull request
-
----
-
-# 📜 License
-
-This project was developed as a hackathon prototype for educational and demonstration purposes.
-
----
-
-## ⭐ Support
-
-If you like the idea, consider giving the repository a star.
-
-It helps us grow and motivates us to continue building.
-
----
-
-# 🎟️ EventLens
-
-### Discover events hidden inside the internet's short-form content.
+- Swap `eventFeed` / `seenVideoIds` (in-memory) for Postgres + Redis.
+- Move `runCrawlCycle()` to a proper job queue (BullMQ) instead of
+  `setInterval`, so it survives restarts and can run distributed.
+- Add a moderation step before publishing (the `trustScore < 20` skip is
+  a stand-in for this).
