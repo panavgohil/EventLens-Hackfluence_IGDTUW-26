@@ -6,7 +6,7 @@ itself in.
 
 ## Why this addresses the mentor feedback
 
-| Before (v1/v2) | Now (v3) |
+| Before (v1) | Now (v2) |
 |---|---|
 | User pastes a YouTube/IG link | No input field exists anywhere in the UI |
 | One video processed per click | A scheduler scans a **seed list of hashtags** every 5 minutes |
